@@ -1,0 +1,356 @@
+    
+    
+<!DOCTYPE html>
+<meta charset="utf-8">
+<script type="text/javascript" src="d3.min.js" charset="utf-8"></script>
+<script type="text/javascript" src="http://code.jquery.com/jquery-1.6.2.min.js"></script> 
+<script type="text/javascript" src="jquery.tipsy.js"></script>
+<link href="tipsy.css" rel="stylesheet" type="text/css" />
+
+<!-- <link rel="shortcut icon" href="../common/delimited-favicon-v4.ico">
+<link href="css/bootstrap.css" rel="stylesheet"> -->
+
+
+<style type="text/css">
+
+body {
+  font: 15px sans-serif;  
+  background: #fff;
+  color: #000 
+
+}
+
+.dot {
+  stroke: #000;
+  stroke-opacity: 0.6;
+  stroke-width: 2px;
+  
+}
+
+.axis path,
+.axis line {
+  fill: none;
+  stroke: #aaa;
+  shape-rendering: crispEdges;
+  
+  .tick { 
+  	stroke: #aaa; 
+  	fill:none; 
+    stroke-width: 2px;
+  	shape-rendering: crispEdges;
+  }
+  
+}
+
+.axis text {
+    font-family: sans-serif;
+    font-size: 14px;
+    stroke: #666;	
+}
+
+h1 {
+    color: #86B404;
+}
+
+ul {
+  list-style: none;
+  font-weight: bold;
+}
+
+li {
+  margin:  0.2em 0.0em;
+  padding: 0.5em 1.0em;
+  font-weight: normal;
+}
+
+svg {
+    background: #fff;
+	
+}
+
+.hover {
+	fill: #FFf;
+	opacity: 0.66;
+}
+</style>
+
+
+    
+<script>  //major d3 control script 
+var margin = {top: 30, right: 20, bottom: 40, left: 80},
+    width = 1800 - margin.left - margin.right,
+    height = 1400 - margin.top - margin.bottom;
+
+// setup fill color
+	var circleValue = function(d) { return Math.round(d.budjet/42000000);}; // classify the general budjets, experience value 
+	var color = d3.scale.category10();  // color coding for the circle categories
+	
+// add the tooltip area to the webpage
+	var tooltip = d3.select("body").append("div")
+	    .attr("class", "tooltip")
+	    .style("opacity", 0);
+	
+	
+// load data
+d3.json("imdb-movies.json", function(data) {
+	
+   // global variables 
+   var _currentBudget;
+   var _currentHighlight; 
+  
+   var svg = d3.select("body")  //draw SVG canvas
+              .append("svg")
+              .attr("width", 1800)
+              .attr("height", 1400)
+			  .append("g")
+  	 		  .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+   
+   var format = d3.time.format("%Y-%m-%d");  // 
+   //var dates = format.parse(d.date); // returns a Date
+   
+   var maxYear = d3.max(data, function(d){return d.year});
+   var minYear = d3.min(data, function(d){return d.year});
+   
+   var le = 1.0;  // for filtering data range [0,8]  --> filter level
+   var maxBud = d3.max(data, function(d){
+       if(d.budjet != undefined){
+		 return d.budjet;} });
+   var minBud = d3.min(data, function(d){   
+	   if(d.budjet != undefined){
+		 return d.budjet;
+       } });
+   var levelBud = minBud + le *(maxBud - minBud)/8;   
+   var filterGate = Math.round(levelBud/42000000);  // filter gate to compare
+   
+   
+   var xValue = function (d) {
+                 if(d.year != undefined){
+           return d.year;
+                 }
+               },
+       xScale = d3.time.scale()
+                 .domain([minYear,maxYear])
+                 .range([0,width/1.2]),
+       xMap = function(d) {return xScale(xValue(d));},  //alvi    ..xValue(d)   
+       xAxis = d3.svg.axis().scale(xScale).orient("bottom")
+                  .ticks(24)
+                  .tickSize(height/1.5, 0, 0);
+     
+   var yValue = function (d) {
+             if(d.rating != undefined){
+            return d.rating.mean;
+             }
+           },
+       yScale = d3.scale.linear()
+           .domain([0,10])
+           .range([height/1.5,0]),
+       yMap = function(d) {
+           if(d.rating != undefined){
+          return yScale(yValue(d));
+                  }
+           },  
+       yAxis = d3.svg.axis().scale(yScale).orient("left")
+          .tickSize(-(width/1.2+(margin.left/2)));
+   var rValue = function(d) { var circlesize = Math.sqrt(d.budjet/5000000)*5; return circlesize};
+   var rValueBig = function(d) { var circlesize = Math.sqrt(d.budjet/2000000)*5; return circlesize};
+   
+   ////zoom related part 
+   // var zoom = d3.behavior.zoom()
+   // 	 					.x(x)
+   // 	 					.y(y)
+   //   	  					.scaleExtent([1, 32])
+   //   		  				.on("zoom", zoomed);
+   //
+   // function zoomed() {
+   //  	    svg.select(".x.axis").call(xAxis);
+   //  	    svg.select(".y.axis").call(yAxis);
+   //  	  } // end of zoomed
+   
+   // draw circle on SVG
+   var circles = svg.selectAll(".dot")
+   	  				.data(data)
+ 					.enter().append("circle")	         
+		 			.style("opacity", 0.4)
+ 					.attr("class", ".dot") // css style
+		 			.attr("stroke","#EEE")
+  	   				.attr("r", rValue)   
+   	  				.on("mouseover", function(d) {
+          			  		d3.select(this)
+       	 			   			.style("fill", "#ff0")  // change color 
+	        					.style("opacity", 0.64)
+		    					.style("stroke-width","3px")
+								.attr("r",rValue);	 	  //same size as selection on 
+	    			         })   // end of mouse over 
+					.on("click", function(d){    // filter data on click 	 
+	                ////filter budjet value that is larger than a vale and return these objs and draw them in white circles together		 
+		 			   _currentHighlight = this; 
+		 			  _currentBudget = d.budjet;
+			
+			if( this == _currentHighlight){
+				
+		    var current = Math.round(_currentBudget/42000000);  // filter gate to compare
+			
+		 	svg.selectAll(".dot")
+   	  		   .data(data)
+  	   		   .enter().append("circle")
+   	  		   .filter(function(d) { 
+			      return (Math.round(d.budjet/42000000) > current - filterGate) && (Math.round(d.budjet/42000000) < current + filterGate)})
+    		   .style("fill", "#BFFF00")
+			   .attr("stroke","#EEE")
+			   .style("opacity", 0.48)		 
+ 			   .attr("r", rValue)
+  			   .attr("cx", xMap)
+  			   .attr("cy", yMap); 
+														
+			 }else{
+  		        svg.selectAll(".dot")
+     	  		   .data(data)
+    	   		   .enter().append("circle")
+      			   .style("fill", function(d) { 
+					   return color(circleValue(d));})
+  				   .style("opacity", 0.5)		 
+   				   .attr("r", rValue)
+    			   .attr("cx", xMap)
+    			   .attr("cy", yMap); 		
+			      }	 //end of else 					
+		             }) // end of "click"
+	  	     .on("dbclick", function(d){    // filter data on click 
+	   
+	  	            _currentHighlight = this; 
+	  			    _currentBudget = d.budjet;
+			
+	  				if( this == _currentHighlight){
+	  			    var current = Math.round(_currentBudget/42000000);  // filter gate to compare
+			
+	  			 	svg.selectAll(".dot")
+	  	   	  		   .data(data)
+	  	  	   		   .enter().append("circle")
+	  	   	  		   .filter(function(d) { 
+	  			             return Math.round(d.budjet/42000000) == (current - filterGate/4); })
+	  	    		   .style("fill", "#BFFF00")
+	  				   .style("opacity", 0.55)		 
+	  	 			   .attr("r", rValue)
+	  	  			   .attr("cx", xMap)
+	  	  			   .attr("cy", yMap);											
+	  				 }else{
+		 
+	  	  		        svg.selectAll(".dot")
+	  	     	  		   .data(data)
+	  	    	   		   .enter().append("circle")
+	  	      			   .style("fill", function(d) { 
+	  						   return color(circleValue(d));})
+	  	  				   // .style("opacity", 0.5)
+						   .attr("class",".hover")	 
+	  	   				   .attr("r", rValue)
+	  	    			   .attr("cx", xMap)
+	  	    			   .attr("cy", yMap); 
+	  				 }			 
+	  		           })  // end of dbclick
+            .on("mouseout", function(d) {
+                d3.select(this).transition()
+         			.ease("quad")
+            		.delay("100")
+             		.duration("200")
+		   		  	.style("fill", function(d) { return color(circleValue(d));} )
+	   	 			.style("opacity", 0.38)
+			 		.attr("r", rValue); // circle size 
+		                })   // end of "mouseout"
+    		.attr("cx", xMap) // timeline for the data to show, month, year...?
+    		.attr("cy", yMap)  // rating bar, verticallly
+		   // .attr("",)      // adding title 
+            .style("fill", function(d) { return color(circleValue(d));}); // fill color to the cValue	
+	       	 	// tipsy part for show detailed info tag on cirlce
+	 	   		$('svg circle').tipsy({
+	      	  		gravity: 's',
+	      	  		html: true,
+                    opacity: 0.7,    // opacity of tooltip		
+	 		   		title: function() {
+	      			var d = this.__data__, named= d.title, c = d.genres; // loading data using "d = this..."
+	        	    return 'Film: '+ named + "<br/>"+ 'Gengres: <span style="color:' + c + '">' + c + "</span>" + '<br/>'
+			         + 'Year: ' + d.year + "<br/>" + "Budget: " + d.budjet + "<br/>" + "Rating: " + d.rating.mean;
+	     			}    });
+					
+      // Zoom
+			svg.call(d3.behavior.zoom().x(xScale).y(yScale).on("zoom", zoom));
+    				function zoom() {
+								svg.selectAll(".dot").data(data)
+	  	  	  			 			.enter().append("circle")
+									.attr("cx", xScale(xValue))
+									.attr("cy", yScale(yValue))
+									d3.select(".x.axis").call(xAxis);
+									d3.select(".y.axis").call(yAxis);
+			}	
+		 
+     // draw legend	
+	 var legend = svg.selectAll(".legend")
+	        	 	 .data(color.domain())
+	     	  		 .enter().append("g")
+	  		   		 .attr("class", "legend")
+	   		  		 .attr("transform", function(d, i) { return "translate(0," + i * 20 + ")"; }); 
+		 
+     // draw legend colored rectangles
+    				 legend.append("rect")
+       			  			.attr("x", width/1.15 - 10)
+       			  			.attr("width", 18)
+       			  			.attr("height", 18)
+        			 		.style("fill", color)
+      			   			.style("opacity", 0.5)
+       			  			.text("Budget legend");
+		 		 
+     // draw legend text
+    				legend.append("text")
+      					  .attr("x", width/1.15 - 10)
+    					  .attr("y", 9)
+     					  .attr("dy", ".35em")
+						  .style("color","#000000")
+     					  .style("text-anchor", "end")
+	 					  .text(function(d,i){return "level"+(i+1)});
+
+  var x = d3.scale.linear()
+      			.domain([-width / 2, width / 2])
+      			.range([0, width]);
+
+  var y = d3.scale.linear()
+     		   	.domain([-height / 2, height / 2])
+   			 	.range([height, 0]);
+				
+   
+	        // append X-Y axis 
+	        svg.append("g")  // X - axis
+	            .attr("class", "x axis")
+	            //.attr("transform", "translate(0, "+height/1.2+")")
+	            .call(xAxis)
+	            .append("text")
+	            .attr("class", "label")
+	            .attr("x", width/1.2)
+	            .attr("y", height/1.55)
+	            .style("text-anchor", "end")
+	            .text("Year");
+   
+	        svg.append("g")    // Y - aixs
+	            .attr("class", "y axis")
+	            .attr("transform", "translate("+(-margin.left/2)+", 0)")
+	            .call(yAxis)
+	            .append("text")
+	        	 .attr("class", "label")
+	        	 .attr("transform", "rotate(-90)")
+	      	   	 .attr("y", 6)
+	     		 .attr("dy", ".71em")
+	      	   	 .style("text-anchor", "end")
+	     		 .text("Rating");
+
+      });  // end of 
+
+</script>
+
+<head>
+    <center><h1>Movie Ratings and Budget (1990-2013)</h1></center>
+</head>
+
+<body>
+ <center><p></p></center>
+  <!-- <svg>
+  </svg> -->
+</body>
+
+</html>
